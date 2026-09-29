@@ -326,3 +326,75 @@ def get_top_earners_by_department(limit_per_dept: int = 5) -> List[Dict]:
             {"limit_per_dept": limit_per_dept},
         ).mappings().all()
     return [dict(r) for r in rows]
+
+def get_department_detail(dept_name: str) -> Optional[Dict]:
+    """
+    Statistik lengkap satu department beserta top 3 earners.
+    Return None jika department tidak ditemukan.
+    """
+    with engine.connect() as conn:
+        # Query
+        stats_query = f"""
+            SELECT
+                "Department",
+                COUNT(*) AS total_employees,
+                COUNT(*) FILTER (WHERE "Attrition" = 'Yes') AS attrition_count,
+                ROUND(
+                    COUNT(*) FILTER (WHERE "Attrition" = 'Yes')::numeric / COUNT(*), 4
+                ) AS attrition_rate,
+                ROUND(AVG("MonthlyIncome")::numeric, 2) AS avg_income,
+                MIN("MonthlyIncome") AS min_income,
+                MAX("MonthlyIncome") AS max_income
+            FROM {ATTRITION_TABLE}
+            WHERE "Department" ILIKE :dept_name
+            GROUP BY "Department"
+        """
+        dept_stat = conn.execute(
+            text(stats_query),
+            {"dept_name": dept_name.strip()}
+        ).mappings().first()
+
+        if not dept_stat:
+            return None
+
+        actual_dept_name = dept_stat["Department"]
+
+        # Query top 3 earners menggunakan RANK() window function
+        top_earners_query = f"""
+            SELECT * FROM (
+                SELECT
+                    "EmployeeNumber",
+                    "JobRole",
+                    "MonthlyIncome",
+                    RANK() OVER (ORDER BY "MonthlyIncome" DESC) AS rnk
+                FROM {ATTRITION_TABLE}
+                WHERE "Department" = :actual_dept_name
+            ) ranked
+            WHERE rnk <= 3
+            ORDER BY "MonthlyIncome" DESC
+            LIMIT 3
+        """
+        earners = conn.execute(
+            text(top_earners_query),
+            {"actual_dept_name": actual_dept_name}
+        ).mappings().all()
+
+        top_earners_list = [
+            {
+                "EmployeeNumber": r["EmployeeNumber"],
+                "JobRole": r["JobRole"],
+                "MonthlyIncome": r["MonthlyIncome"],
+            }
+            for r in earners
+        ]
+
+        return {
+            "department": actual_dept_name,
+            "total_employees": dept_stat["total_employees"],
+            "attrition_count": dept_stat["attrition_count"],
+            "attrition_rate": float(dept_stat["attrition_rate"] or 0.0),
+            "avg_income": float(dept_stat["avg_income"] or 0.0),
+            "min_income": dept_stat["min_income"],
+            "max_income": dept_stat["max_income"],
+            "top_earners": top_earners_list,
+        }

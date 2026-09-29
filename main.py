@@ -21,6 +21,7 @@ from db import (
     get_attrition_by_overtime,
     get_attrition_by_tenure,
     get_top_earners_by_department,
+    get_department_detail,
 )
 
 log = logging.getLogger(__name__)
@@ -149,6 +150,20 @@ class TopEarner(BaseModel):
     Attrition: str
     income_rank: int
 
+class TopEarnerDept(BaseModel):
+    EmployeeNumber: int
+    JobRole: str
+    MonthlyIncome: int
+
+class DepartmentDetailResponse(BaseModel):
+    department: str
+    total_employees: int
+    attrition_count: int
+    attrition_rate: float
+    avg_income: float
+    min_income: int
+    max_income: int
+    top_earners: List[TopEarnerDept]
 
 # ==================================================================
 # Authentication Helpers
@@ -378,6 +393,24 @@ def attrition_summary(auth=Depends(get_current_client)):
     """Overall attrition stats."""
     # TODO 34: Panggil get_attrition_summary() dan return hasilnya
     return get_attrition_summary()
+
+@app.get(
+    "/attrition/department/{dept_name}",
+    response_model=DepartmentDetailResponse,
+    tags=["Attrition (ELT)"],
+)
+def department_detail(
+    dept_name: str,
+    auth=Depends(get_current_client),
+):
+    """Statistik lengkap untuk satu department (termasuk top 3 earners)."""
+    detail = get_department_detail(dept_name)
+    if not detail:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Department '{dept_name}' tidak ditemukan"
+        )
+    return detail
 
 # TODO 35: Buat endpoint GET /attrition/by-department
 #
