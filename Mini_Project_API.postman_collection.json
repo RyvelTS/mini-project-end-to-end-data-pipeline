@@ -1,0 +1,536 @@
+{
+  "info": {
+    "name": "End to End Data Pipeline API",
+    "description": "Two data pipelines, one API.\n\n**Path A (ETL):** Scraped articles → cleaned → loaded\n**Path B (ELT):** Raw CSV → loaded → SQL transforms\n\n## Setup\n1. Set `base_url` variable (default: http://localhost:8000)\n2. Run \"Get JWT Token\" first — it auto-saves the token\n3. All protected endpoints use API Key by default\n4. Switch to Bearer token in the JWT folder\n\n## Auth Methods\n- **API Key:** X-API-Key header\n- **JWT Bearer:** POST /token → use access_token",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "my-super-secret-key",
+      "type": "string"
+    },
+    {
+      "key": "client_id",
+      "value": "demo_client",
+      "type": "string"
+    },
+    {
+      "key": "client_secret",
+      "value": "demo_secret_value",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Public",
+      "item": [
+        {
+          "name": "Root",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "Public — no auth needed. Returns API info and available paths."
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Public — returns status and server timestamp."
+          }
+        }
+      ],
+      "description": "No authentication required."
+    },
+    {
+      "name": "2. Auth",
+      "item": [
+        {
+          "name": "Get JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('jwt_token', json.access_token);",
+                  "    pm.test('Token saved to collection variable', function() {",
+                  "        pm.expect(json.access_token).to.be.a('string');",
+                  "        pm.expect(json.token_type).to.eql('bearer');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"client_id\": \"{{client_id}}\",\n    \"client_secret\": \"{{client_secret}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/token",
+              "host": ["{{base_url}}"],
+              "path": ["token"]
+            },
+            "description": "Exchange client credentials for a JWT token.\n\nThe test script auto-saves the token to the `jwt_token` collection variable so the JWT folder requests work immediately."
+          }
+        },
+        {
+          "name": "Test — No Auth (should 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 without auth', function() {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/articles/stats",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "stats"]
+            },
+            "description": "Verify that protected endpoints reject unauthenticated requests."
+          }
+        },
+        {
+          "name": "Test — Wrong API Key (should 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401 with wrong key', function() {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "wrong-key-here"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/stats",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "stats"]
+            },
+            "description": "Verify that invalid API keys are rejected."
+          }
+        }
+      ],
+      "description": "Authentication flow and negative tests."
+    },
+    {
+      "name": "3. Articles (ETL) — API Key",
+      "item": [
+        {
+          "name": "Article Stats (total + per source)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has total and by_source', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('total_articles');",
+                  "    pm.expect(json).to.have.property('by_source');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/stats",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "stats"]
+            },
+            "description": "Total article count with breakdown per source (bbc, nytimes, books.toscrape, etc)."
+          }
+        },
+        {
+          "name": "List Articles (no filter)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles?limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["articles"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "List latest 5 articles, no filter."
+          }
+        },
+        {
+          "name": "List Articles — Filter by Source",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles?source=books.toscrape&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["articles"],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "books.toscrape"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Filter articles by source. Try: bbc, nytimes, cnn, books.toscrape, quotes.toscrape"
+          }
+        },
+        {
+          "name": "List Articles — Search by Title",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles?title=love&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["articles"],
+              "query": [
+                {
+                  "key": "title",
+                  "value": "love"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Case-insensitive partial match on article title."
+          }
+        },
+        {
+          "name": "List Articles — Source + Title",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles?source=quotes.toscrape&title=life&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["articles"],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "quotes.toscrape"
+                },
+                {
+                  "key": "title",
+                  "value": "life"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Combine source and title filters."
+          }
+        },
+        {
+          "name": "Get Article by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/1",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "1"]
+            },
+            "description": "Get a single article by database ID. Change the ID in the URL."
+          }
+        },
+        {
+          "name": "Get Article — Not Found (should 404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 404', function() {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/999999",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "999999"]
+            },
+            "description": "Verify 404 for non-existent article ID."
+          }
+        }
+      ],
+      "description": "ETL path — scraped articles, cleaned in Pandas, loaded to DB.\nAll requests use API Key auth."
+    },
+    {
+      "name": "4. Attrition (ELT) — API Key",
+      "item": [
+        {
+          "name": "Attrition Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Has expected fields', function() {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('total_employees');",
+                  "    pm.expect(json).to.have.property('attrition_rate');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/summary",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "summary"]
+            },
+            "description": "Overall attrition: total employees, yes/no count, rate."
+          }
+        },
+        {
+          "name": "Attrition by Department",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/by-department",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "by-department"]
+            },
+            "description": "Attrition rate + avg income per department.\nSQL: GROUP BY + FILTER + AVG (from transform_attrition.sql queries 1 & 2)."
+          }
+        },
+        {
+          "name": "Attrition by Overtime",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/by-overtime",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "by-overtime"]
+            },
+            "description": "Attrition rate by overtime status.\nSQL: GROUP BY cross-tab (from transform_attrition.sql query 4)."
+          }
+        },
+        {
+          "name": "Attrition by Tenure",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/by-tenure",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "by-tenure"]
+            },
+            "description": "Attrition rate by tenure bucket (new <2y, mid 2-5y, veteran 5y+).\nSQL: CASE WHEN (from transform_attrition.sql query 3)."
+          }
+        },
+        {
+          "name": "Top Earners by Department",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/top-earners?limit_per_dept=3",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "top-earners"],
+              "query": [
+                {
+                  "key": "limit_per_dept",
+                  "value": "3"
+                }
+              ]
+            },
+            "description": "Top N earners per department.\nSQL: RANK() OVER (PARTITION BY ... ORDER BY ...) window function (from transform_attrition.sql query 5)."
+          }
+        }
+      ],
+      "description": "ELT path — raw CSV loaded to DB, transformed with SQL at query time.\nAll requests use API Key auth.\n\n⚠️ If these return 500, the attrition table doesn't exist yet. Run:\npython pipeline.py --attrition-csv employee_attrition.csv"
+    },
+    {
+      "name": "5. JWT Auth Flow",
+      "item": [
+        {
+          "name": "Attrition Summary (JWT)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/attrition/summary",
+              "host": ["{{base_url}}"],
+              "path": ["attrition", "summary"]
+            },
+            "description": "Same endpoint as folder 4, but using JWT Bearer token instead of API Key.\n\n⚠️ Run \"Get JWT Token\" first (folder 2) — it auto-saves the token."
+          }
+        },
+        {
+          "name": "Articles Stats (JWT)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/stats",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "stats"]
+            },
+            "description": "Same endpoint as folder 3, but using JWT Bearer token.\n\nDemonstrates that both auth methods work on the same endpoints."
+          }
+        }
+      ],
+      "description": "Same endpoints but using JWT Bearer token.\n\nRun \"Get JWT Token\" in folder 2 first — the test script auto-saves the token to the jwt_token variable."
+    }
+  ]
+}
