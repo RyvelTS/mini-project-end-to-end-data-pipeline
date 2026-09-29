@@ -15,6 +15,7 @@ from db import (
     count_articles_by_source,
     get_articles,
     get_article_by_id,
+    search_articles,
     get_attrition_summary,
     get_attrition_by_department,
     get_attrition_by_overtime,
@@ -76,6 +77,12 @@ class ArticleStats(BaseModel):
   total_articles: int
   by_source: dict[str,int]
 
+class PaginatedArticleResponse(BaseModel):
+    data: List[Article]
+    page: int
+    per_page: int
+    total_items: int
+    total_pages: int
 
 class TokenRequest(BaseModel):
     """Request body untuk POST /token."""
@@ -299,6 +306,29 @@ def list_articles(
     # Hint: return get_articles(source=source, title=title, limit=limit)
     return get_articles(source=source, title=title, limit=limit)
 
+@app.get(
+    "/articles/search",
+    response_model=PaginatedArticleResponse,
+    tags=["Articles (ETL)"],
+)
+def search_articles_endpoint(
+    source: Optional[str] = Query(None, description="Filter by source (misal: bbc, nytimes)"),
+    title: Optional[str] = Query(None, description="Case-insensitive partial match pada judul"),
+    date_from: Optional[str] = Query(None, description="Format: YYYY-MM-DD, filter published_at >="),
+    date_to: Optional[str] = Query(None, description="Format: YYYY-MM-DD, filter published_at <="),
+    page: int = Query(1, ge=1, description="Nomor halaman (mulai dari 1)"),
+    per_page: int = Query(10, ge=1, le=50, description="Jumlah artikel per halaman (max 50)"),
+    auth=Depends(get_current_client),
+):
+    """Search artikel dengan filter dan pagination."""
+    return search_articles(
+        source=source,
+        title=title,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        per_page=per_page,
+    )
 
 # TODO 33: Buat endpoint GET /articles/stats
 #

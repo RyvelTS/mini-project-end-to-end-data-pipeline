@@ -2,6 +2,7 @@ from typing import Optional, List, Dict
 from sqlalchemy import create_engine, text
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import pandas as pd
+import math
 import logging
 
 log = logging.getLogger(__name__)
@@ -170,6 +171,65 @@ def get_attrition_summary() -> Dict:
         "attrition_yes": attrition_yes,
         "attrition_no": total - attrition_yes,
         "attrition_rate": round(attrition_yes / total, 4) if total > 0 else 0.0,
+    }
+
+def search_articles(
+    source: Optional[str] = None,
+    title: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 10,
+) -> Dict:
+    """
+    Search articles dengan filter dinamis dan pagination.
+    """
+    offset = (page - 1) * per_page
+
+    where_clauses = ["1=1"]
+    params: dict = {}
+
+    if source:
+        where_clauses.append("source = :source")
+        params["source"] = source.lower()
+
+    if title:
+        where_clauses.append("title ILIKE :title")
+        params["title"] = f"%{title}%"
+
+    if date_from:
+        where_clauses.append("published_at >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        where_clauses.append("published_at <= :date_to")
+        params["date_to"] = date_to
+
+    where_sql = " AND ".join(where_clauses)
+
+    with engine.connect() as conn:
+        # Hitung total artikel yang cocok dengan filter
+        count_query = f"SELECT COUNT(*) FROM {ARTICLES_TABLE} WHERE {where_sql}"
+        total_items = conn.execute(text(count_query), params).scalar() or 0
+
+        # Ambil data dengan LIMIT dan OFFSET
+        data_query = f"""
+            SELECT * FROM {ARTICLES_TABLE}
+            WHERE {where_sql}
+            ORDER BY published_at DESC NULLS LAST
+            LIMIT :limit OFFSET :offset
+        """
+        data_params = {**params, "limit": per_page, "offset": offset}
+        rows = conn.execute(text(data_query), data_params).mappings().all()
+
+    total_pages = math.ceil(total_items / per_page) if total_items > 0 else 0
+
+    return {
+        "data": [dict(r) for r in rows],
+        "page": page,
+        "per_page": per_page,
+        "total_items": total_items,
+        "total_pages": total_pages,
     }
 
 def get_attrition_by_department() -> List[Dict]:
