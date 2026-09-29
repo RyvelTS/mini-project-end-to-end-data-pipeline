@@ -76,7 +76,6 @@ def save_articles(df: pd.DataFrame) -> int:
     log.info("Insert selesai: %d baru dari %d record.", inserted, len(df))
     return inserted
 
-
 def count_articles() -> int:
     """Count total articles in DB."""
     with engine.connect() as conn:
