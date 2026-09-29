@@ -22,6 +22,7 @@ from db import (
     get_attrition_by_tenure,
     get_top_earners_by_department,
     get_department_detail,
+    get_attrition_risk_profile,
 )
 
 log = logging.getLogger(__name__)
@@ -453,3 +454,15 @@ def top_earners(
 ):
     """Top earners per department (SQL RANK window function)."""
     return get_top_earners_by_department(limit_per_dept=limit_per_dept)
+
+@app.get(
+    "/attrition/risk-profile",
+    response_model=List[Dict],
+    tags=["Attrition (ELT)"],
+)
+def attrition_risk_profile(
+    limit: int = Query(20, ge=1, le=100, description="Jumlah data karyawan high-risk (max 100)"),
+    auth=Depends(get_current_client),
+):
+    """Karyawan dengan indikator risiko attrition tinggi (OverTime, tenure < 3th, gaji < rata-rata dept)."""
+    return get_attrition_risk_profile(limit=limit)

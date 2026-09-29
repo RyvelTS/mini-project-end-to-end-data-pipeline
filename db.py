@@ -398,3 +398,30 @@ def get_department_detail(dept_name: str) -> Optional[Dict]:
             "max_income": dept_stat["max_income"],
             "top_earners": top_earners_list,
         }
+
+def get_attrition_risk_profile(limit: int = 20) -> List[Dict]:
+    """
+    Mengambil karyawan dengan indikator risiko attrition tinggi:
+    1. OverTime = 'Yes'
+    2. YearsAtCompany < 3
+    3. MonthlyIncome di bawah rata-rata departemen
+    """
+    query = f"""
+        WITH dept_avg AS (
+            SELECT "Department",
+                   AVG("MonthlyIncome") AS avg_income
+            FROM {ATTRITION_TABLE}
+            GROUP BY "Department"
+        )
+        SELECT e.*
+        FROM {ATTRITION_TABLE} e
+        JOIN dept_avg d ON e."Department" = d."Department"
+        WHERE e."OverTime" = 'Yes'
+          AND e."YearsAtCompany" < 3
+          AND e."MonthlyIncome" < d.avg_income
+        ORDER BY e."EmployeeNumber" ASC
+        LIMIT :limit
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text(query), {"limit": limit}).mappings().all()
+    return [dict(r) for r in rows]
